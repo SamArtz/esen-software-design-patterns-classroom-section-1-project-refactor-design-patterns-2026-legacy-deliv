@@ -39,17 +39,23 @@ class Order extends Model
         ];
 
         if (!isset($allowed[$this->status])) {
-            throw new \Exception("Unknown current status: {$this->status}");
+            throw new \DomainException("Estado actual desconocido: {$this->status}");
         }
 
         if (!in_array($newStatus, $allowed[$this->status])) {
-            throw new \Exception(
-                "Cannot transition from '{$this->status}' to '{$newStatus}'."
+            throw new \DomainException(
+                "Transición no permitida de '{$this->status}' a '{$newStatus}'."
             );
         }
 
         $this->status = $newStatus;
-        // Esto genera bugs cuando se olvida el save().
+        
+        // CORRECCIÓN: Aseguramos que el cambio persistir en la DB siempre.
+        $this->save();
+
+        // Disparamos un evento de Laravel en lugar de llamar a notify() directamente
+        // Esto nos permitirá sacar la lógica de notificaciones del modelo más adelante.
+        event("order.status.{$newStatus}", $this);
     }
 
     public function validateOrder(): bool
