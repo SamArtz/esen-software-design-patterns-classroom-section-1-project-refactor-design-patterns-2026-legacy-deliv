@@ -36,6 +36,7 @@ class PaymentProcessingTest extends TestCase
 
     public function test_wompi_payment_processes_successfully(): void
     {
+        $this->withoutExceptionHandling();
         ['order' => $order, 'customerUser' => $user] = $this->createOrderWithPayment();
         $token = $user->createToken('t')->plainTextToken;
 
@@ -43,6 +44,7 @@ class PaymentProcessingTest extends TestCase
             'provider' => 'wompi',
         ]);
 
+        $response->dump();
         $response->assertStatus(200)->assertJson(['success' => true]);
     }
 

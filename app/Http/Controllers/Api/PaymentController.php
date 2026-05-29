@@ -62,7 +62,7 @@ class PaymentController extends Controller
             if ($success) {
                 $order->transitionTo('paid');
                 $order->save();
-                $order->notify('paid');
+                //$order->notify('paid');
             }
 
             \App\Support\Logger::getInstance()->log(
@@ -72,10 +72,11 @@ class PaymentController extends Controller
             return response()->json(['success' => $success, 'transaction_id' => $transactionId]);
 
         } catch (\Exception $e) {
-            \App\Support\Logger::getInstance()->log(
-                "Payment error order {$order->id}: " . $e->getMessage(), 'error'
-            );
-            return response()->json(['error' => 'Payment processing failed.'], 500);
+            return response()->json([
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ],500);
         }
     }
 
