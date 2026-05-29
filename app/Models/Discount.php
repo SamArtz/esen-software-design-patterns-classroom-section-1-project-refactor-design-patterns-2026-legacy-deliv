@@ -18,6 +18,13 @@ class Discount extends Model
     public function orders() { return $this->belongsToMany(Order::class, 'order_discounts'); }
 
     // También: validaciones inline que deberían ser scopes.
+
+    public function isValid(): bool
+    {
+        return now()->between($this->valid_from, $this->valid_to)
+            && ($this->max_uses === null || $this->current_uses < $this->max_uses);
+    }
+    
     public function apply(Order $order): float
     {
         if (now() < $this->valid_from || now() > $this->valid_to) {

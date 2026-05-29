@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\VendorController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\CourierController;
+use App\Http\Controllers\Api\DiscountController;
 use Illuminate\Support\Facades\Route;
 
 // Auth (sin middleware)
@@ -39,16 +40,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payments/{payment}/refund', [PaymentController::class, 'refund']);
 
     // Discounts
-    Route::get('/discounts/validate/{code}', function (\Illuminate\Http\Request $request, string $code) {
-        $discount = \App\Models\Discount::where('code', $code)->first();
-        if (!$discount) {
-            return response()->json(['valid' => false, 'error' => 'Discount not found.'], 404);
-        }
-        $isValid = now() >= $discount->valid_from
-            && now() <= $discount->valid_to
-            && ($discount->max_uses === null || $discount->current_uses < $discount->max_uses);
-        return response()->json(['valid' => $isValid, 'discount' => $discount]);
-    });
+    Route::get('/discounts/validate/{code}', [DiscountController::class, 'validateCode']);
 
     // Customer profile
     Route::get('/customers/profile',   [CustomerController::class, 'profile']);

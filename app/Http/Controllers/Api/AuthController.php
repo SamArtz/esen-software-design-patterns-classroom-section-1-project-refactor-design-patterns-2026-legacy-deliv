@@ -7,18 +7,13 @@ use App\Models\Customer;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
+use App\Http\Requests\AuthRequest;
 
 class AuthController extends Controller
 {
-    public function register(Request $request): JsonResponse
+    public function register(AuthRequest $request): JsonResponse
     {
-        $request->validate([
-            'name'     => 'required|string|max:255',
-            'email'    => 'required|email|unique:users',
-            'password' => 'required|string|min:8',
-            'phone'    => 'nullable|string',
-            'role'     => 'nullable|in:customer,vendor,courier',
-        ]);
+
 
         try {
             $user = User::create([
@@ -46,9 +41,8 @@ class AuthController extends Controller
         }
     }
 
-    public function login(Request $request): JsonResponse
+    public function login(AuthRequest $request): JsonResponse
     {
-        $request->validate(['email' => 'required|email', 'password' => 'required']);
 
         if (!Auth::attempt($request->only('email', 'password'))) {
             return response()->json(['error' => 'Invalid credentials.'], 401);

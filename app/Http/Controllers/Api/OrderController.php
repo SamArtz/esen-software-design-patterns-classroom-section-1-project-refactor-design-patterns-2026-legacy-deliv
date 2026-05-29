@@ -6,67 +6,43 @@ use App\Models\Order;
 use App\Models\Customer;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use App\Policies\OrderPolicy;
+use App\Http\Requests\StoreOrderRequest;
 
 class OrderController extends Controller
 {
+    use AuthorizesRequests;
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
 
-        if ($user->role === 'customer') {
-            $orders = Order::where('customer_id', $user->customer->id)
-                ->with(['vendor', 'items', 'payment'])
-                ->orderByDesc('created_at')
-                ->get();
-        } elseif ($user->role === 'vendor') {
-            $orders = Order::where('vendor_id', $user->vendor->id)
-                ->with(['customer.user', 'items', 'payment'])
-                ->orderByDesc('created_at')
-                ->get();
-        } elseif ($user->role === 'courier') {
-            $orders = Order::where('courier_id', $user->courier->id)
-                ->with(['customer.user', 'vendor', 'items'])
-                ->orderByDesc('created_at')
-                ->get();
-        } elseif ($user->role === 'admin') {
-            $orders = Order::with(['customer.user', 'vendor', 'courier', 'items', 'payment'])
-                ->orderByDesc('created_at')
-                ->paginate(20);
-        } else {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
+    if ($user->role === 'admin') {
+        // Los admins ven todo con paginación
+        $orders = $query->with(['customer.user', 'vendor', 'courier', 'items', 'payment'])
+                        ->paginate(20);
+    } else {
+        // Clientes, Vendors y Couriers usan el helper de relaciones
+        $orders = $query->with($this->getRelationsByRole($user->role))->get();
+    }
 
         return response()->json($orders);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(StoreOrderRequest $request): JsonResponse
     {
-        $user = $request->user();
-
-        if ($user->role !== 'customer') {
-            return response()->json(['error' => 'Only customers can place orders'], 403);
-        }
-
-        $validated = $request->validate([
-            'vendor_id'        => 'required|exists:vendors,id',
-            'items'            => 'required|array|min:1',
-            'items.*.type'     => 'required|in:product,bundle',
-            'items.*.id'       => 'required|integer',
-            'items.*.quantity' => 'required|integer|min:1',
-            'payment_method'   => 'required|in:card,cash,wallet,transfer',
-            'discount_code'    => 'nullable|string',
-            'notes'            => 'nullable|string|max:500',
-        ]);
+        $this->authorize('create', Order::class);
 
         try {
-            $customer = $user->customer;
-            $order    = $customer->placeOrder($validated, $validated['payment_method']);
+            $order = $request->user()->customer->placeOrder(
+                $request->validated(), 
+                $request->payment_method
+            );
 
             return response()->json([
                 'message' => 'Order placed successfully.',
                 'order'   => $order->load(['items', 'payment', 'discounts']),
             ], 201);
-
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
@@ -74,21 +50,16 @@ class OrderController extends Controller
 
     public function show(Request $request, Order $order): JsonResponse
     {
-        $user = $request->user();
-        $canView = ($user->role === 'admin')
-            || ($user->role === 'customer' && $order->customer_id === $user->customer?->id)
-            || ($user->role === 'vendor'   && $order->vendor_id === $user->vendor?->id)
-            || ($user->role === 'courier'  && $order->courier_id === $user->courier?->id);
-
-        if (!$canView) {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
+        $this->authorize('updateStatus', $order);
 
         return response()->json($order->load(['customer.user', 'vendor', 'courier', 'items', 'payment', 'discounts']));
     }
 
     public function updateStatus(Request $request, Order $order): JsonResponse
     {
+
+        $this->authorize('updateStatus', $order);
+        
         $request->validate(['status' => 'required|string']);
 
         try {
@@ -127,5 +98,15 @@ class OrderController extends Controller
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
+    }
+
+    private function getRelationsByRole(string $role): array
+    {
+        return match ($role) {
+            'customer' => ['vendor', 'items', 'payment'],
+            'vendor'   => ['customer.user', 'items', 'payment'],
+            'courier'  => ['customer.user', 'vendor', 'items'],
+            default    => []
+        };
     }
 }

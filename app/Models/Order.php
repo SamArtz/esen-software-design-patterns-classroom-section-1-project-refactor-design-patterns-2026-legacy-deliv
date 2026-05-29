@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Builder;
 
 class Order extends Model
 {
@@ -135,6 +136,17 @@ class Order extends Model
 
         \App\Support\Logger::getInstance()->log("Order {$this->id} validated successfully.");
         return true;
+    }
+
+    public function scopeForUser($query, $user)
+    {
+    return match ($user->role) {
+        'customer' => $query->where('customer_id', $user->customer->id),
+        'vendor'   => $query->where('vendor_id', $user->vendor->id),
+        'courier'  => $query->where('courier_id', $user->courier->id),
+        'admin'    => $query,
+        default    => $query->whereRaw('1 = 0'), // Retorna vacío
+    };
     }
 
     public function notify(string $event): void
