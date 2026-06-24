@@ -1,58 +1,38 @@
-# Bitácora · Mini-entrega N — [Título del patrón]
+# Bitácora · Mini-entrega N — [Facade Adapter]
 
 **Nombre:** Adrian Samuel Lopez Pimentel
-**Fecha:** 2026-05-29
-**Mini-entrega:** N 2
-**Módulo refactorizado:** [Descuentos / Notificaciones / Estados de Order]
+**Fecha:** 2026-06-24
+**Mini-entrega:** N 4
+**Módulo refactorizado:** [Payment / Payment Controller / Customer]
 
 ---
 
 ## 1. ¿Qué problema de diseño identifiqué en el legacy?
 
-El sistema de descuentos presentaba un problema de Acoplamiento Rígido y violación del Principio de Abierto/Cerrado (OCP). El modelo Discount actuaba como un "Modelo Dios" que asumía la responsabilidad total de conocer y ejecutar la lógica matemática de cada tipo de beneficio, porcentaje, BOGO, envío gratis, etc.
+El problema de diseño que identifique, fue que en el payment controller se realizaba la validación, decidia que proveedor usar, instanciaba los handlers, ejecutaba pagos, escribia logs, etc... eso lo convertia en una clase que violaba el principio de Single Responsibility, ya que se encargaba de demasiadas cosas. Tambien violaba el principio OCP, ya que para agregar algo teniamos que buscar y modificar en el if que esta clase poseia.
 
-Esto causaba un problema real de escalabilidad y fragilidad para añadir una nueva categoría de descuento como "Suscripciones" o "Transporte", se debía modificar todo el modelo. También, este tenia un switch enorme que se encargaba de toda la lógica lo que lo hacia muy dificil de mantener y entender.
-
-Luego nos pasamos a Order.php el cual identifique como un Objeto Todopoderoso. Esto viola el prinicipio de responsabilidad única y el principio abierto cerrado. 
-
-Tambien en este mismo Modelo existía el metodo validateOrder el cual se encargaba de validar todo, desde que existiera un cliente hasta que hubiera stock físico. Esto lo tenia usando un switch y varios if lo que hacia que el sistema fuera muy rigido y que al intentar agregar una validación para alguna categoria habrian mas probabilidades de causar un error.
+Otro problema de diseño que se encontro estaba ubicado en customer service, el cual se encargaba de validar el cliente, validar el vendedor, calcular el subtotal, aplicar descuento, calcular delivery, crear la orden, reserva stock, procesar pago y mas tareas. Esto es demasiado para un controller, viola SingleResponsibility y OCP, ya que el controller tenia mas de 200 lineas. Ademas dentro de ese controller habia mucha logica compleja. Del mismo modo todo eso hace que agregar nuevas funciones sea muy complicado.
 
 ---
 
 ## 2. ¿Qué patrón aplicaste y por qué resuelve este problema?
 
-Apliqué el patrón Strategy para desacoplar el cálculo de los beneficios del modelo Discount. En lugar de un switch que decide cómo calcular basándose en un string, el modelo ahora delega el trabajo a un objeto especializado.
+Para resolver el problema de payment controller, apliqué el patrón adapter, ya que cada proveedor tenia una forma diferente de trabajar, por ejemplo, wompi usaba campos como estado e id de transaccion pero n1co usaba makepayment y devolvia estatus y payment_id. Para resolver eso cree una interfaz para todos los proveedores para que asi payment controller solo tenga que llamar a un metodo change(). De este modo el controller no tiene que conocer nada sobre las pasarelas de pago, toda esa logica que antes estaba en payment controller ahora esta distribuida en una interfaz comun y las interfaces adaptadoras. Esto resuelve el problema, porque ahora payment controller ya no tiene multiples if, y deja de crear una respuesta especifica para cada proveedor, lo que hace el codigo mas limpio y facil de extender.
 
-Clases modificadas y nuevas
-
-Discount, apply()
-DiscountStrategy, PercentageStrategy, BogoStrategy, FixedAmountStrategy, calculate(Order $order, Discount $discount)
-
-En este caso de discount, en vez de llevar la logica en un if para decidir que descuento aplicar, se crearon clases separadas las cuales heredan DiscountStrategy la que contiene el metodo calculate, y asi aplicamos polimorfismo para llamar siempre al mismo metodo.
-
-Para el modelo Order apliqué el patrón Observer mediante el sistema de Eventos de Laravel. Ahora el modelo order ya no crea objetos  de servicios o correos o inventario, sino que mediante el sistema de eventos ahora el archivo se encarga de avisar el estado que posee
-
-Clases modificadas y creadas
-Modificada: Order, trasitionto()
-Creadas: OrderStatusChanged, esta contiene que pedido es y su nuevo estado
-Creada: HandleOrderStatusActions, esta se encarga de recibir el mensaje si ha cambiado el estado del pedido
+Con respecto a customer apliqué el patron facade ya que este nos permite ocultar todo el proceso complejo que estaba en el model usando una interfaz. Usando el patrón facade, logramos simplificar la logica extensa que estaba en el modelo customer.
 
 ## 3. ¿Qué patrón descartaste y por qué?
 
-Para Order descarte el patron Chain of Responsibility, la principal razón por la que descarte este patron es porque tiene un acoplamiento secuencial, es decir que depende de varias acciones ocurriendo en el mismo orden. Y al usar el Observer todas las acciones son independientes
+El patrón que descarté fue el patrón Strategy, es decir usar diferentes estrategias para cada funcion de pago, pero descarte esto porque ya tenia los handlers de cada metodo de pago, entonces solo necesitaba crear clases que me ayudaran a traducir la información de cada una, también descarte strategy debido a que el patron strategy se usa para cosas mas simples, es decir cuando tenemos varias funciones que hace lo mismo pero diferente, y en este caso cada clase handler, lo hace de manera totalmente diferente. Entonces por esa razon descarte el patron strategy, asi mismo en el moelo customer no use este patron ya que eran demasiadas funciones las que hacia customer y usar strategy ademas de que no realizaban las mismas tareas, tambien me iba a llenar de archivos extra y complejidad extra.
 
 ---
 
 ## 4. ¿Qué trade-off aceptaste?
 
-El trade-off puede ser que cambiamos el codigo el cual estaba en un solo archivo por distintos archivos con codigo separado como Legos. Pase de tener 2 archivos por lógica, a tener 6 archivos, ahora para ver la logica de discount hay que ir a la carpeta services y revisar discount y escoger el descuento a modificar de los 6.
-
-Otro trade-off es el rastreo de errores, ahora al tener varios archivos la logica se separa, hay que ser mas cuidadosos con los imports, tambien cuando mandamos a llamar a una funcion debemos procurar enviarle el objeto correcto o tipo de dato.
-
-El sacrificio valio la pena por que es preferible tener mas archivos a tener una lógica dificil de leer y escalar.
+El trade-off que acepte en que al haber creado varios adaptadores, dto y un contract, ahora el sistema usa mas archivos para funcionar, lo que a largo plazo puede ser un poco confuso, pero los beneficios lo valen. Con respecto a customer el trade off que acepte fue separar la lógica del modelo y guardarla en un archivo el cual contiene todas las funciones que realiza, esto hace que la logica de customer este algo oculta.
 
 ---
 
 ## 5. ¿Qué cambiarías si tuvieras que hacerlo de nuevo?
 
-Lo que hubiera hecho es separar la logica de validacion de los productos del modelo Order, para asi separar esa responsabilidad del modelo y dejarlo en otro archivo como en servicios. Y asi hacer que el modelo sea aun mas independiente
+Si tuviera que hacerlo de nuevo lo que cambiaria seria que para customer en la logica de cada funcion, yo separaria las funciones en archivos diferentes para no tener todas las funciones en un solo archivo.

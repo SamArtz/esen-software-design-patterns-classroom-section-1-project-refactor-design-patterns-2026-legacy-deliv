@@ -49,5 +49,9 @@ return [
         'api_key'  => env('BAC_API_KEY', ''),
         'endpoint' => env('BAC_ENDPOINT', 'https://sandbox.bac.com/v1'),
     ],
+    
+    'payment' => [
+        'default' => env('PAYMENT_PROVIDER', 'wompi'),
+    ],
 
 ];

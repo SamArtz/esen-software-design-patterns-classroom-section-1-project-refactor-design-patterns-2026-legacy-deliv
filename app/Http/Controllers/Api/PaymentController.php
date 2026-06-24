@@ -1,82 +1,61 @@
 <?php
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Payment;
-use Illuminate\Http\Request;
+use App\Services\Payments\Contracts\PaymentGatewayAdapter;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class PaymentController extends Controller
 {
+    public function __construct(
+        private PaymentGatewayAdapter $gateway
+    ) {
+    }
+
     public function process(Request $request, Order $order): JsonResponse
     {
-        $request->validate(['provider' => 'required|in:wompi,n1co,bac_transfer,cash']);
-        $provider = $request->provider;
-
         try {
-            $result = [];
-            $success = false;
-            $transactionId = null;
-
-            if ($provider === 'wompi') {
-                $handler = new \App\Services\Payments\WompiHandler();
-                $result  = $handler->cobrar($order->total, 'USD', [
-                    'referencia'  => "ORDER-{$order->id}",
-                    'descripcion' => "Pago orden #{$order->id}",
-                ]);
-                $success       = $result['estado'] === 'APROBADO';
-                $transactionId = $result['id_transaccion'] ?? null;
-
-            } elseif ($provider === 'n1co') {
-                $handler = new \App\Services\Payments\N1coHandler();
-                $result  = $handler->makePayment([
-                    'amount'    => (int) ($order->total * 100), // N1co usa centavos
-                    'currency'  => 'USD',
-                    'order_ref' => $order->id,
-                ]);
-                $success       = $result['status'] === 'success';
-                $transactionId = $result['payment_id'] ?? null;
-
-            } elseif ($provider === 'bac_transfer') {
-                $handler = new \App\Services\Payments\BacTransferHandler();
-                $result  = $handler->initiateTransfer($order->total, $order->id);
-                $success       = $result['code'] === '00';
-                $transactionId = $result['authorization'] ?? null;
-
-            } elseif ($provider === 'cash') {
-                $success       = true;
-                $transactionId = null;
-                $result        = ['type' => 'cash'];
-            }
+            $result = $this->gateway->charge(
+                $order->id,
+                $order->total,
+                'USD'
+            );
 
             $payment = $order->payment;
+
             if ($payment) {
-                $payment->status                  = $success ? 'completed' : 'failed';
-                $payment->external_transaction_id = $transactionId;
-                $payment->raw_response            = $result;
-                $payment->processed_at            = $success ? now() : null;
+                $payment->status = $result->success ? 'completed' : 'failed';
+                $payment->external_transaction_id = $result->transactionId;
+                $payment->raw_response = $result->rawResponse;
+                $payment->processed_at = $result->success ? now() : null;
                 $payment->save();
             }
 
-            if ($success) {
+            if ($result->success) {
                 $order->transitionTo('paid');
                 $order->save();
                 //$order->notify('paid');
             }
 
             \App\Support\Logger::getInstance()->log(
-                "Payment " . ($success ? 'succeeded' : 'failed') . " for order {$order->id} via {$provider}"
+                'Payment ' . ($result->success ? 'succeeded' : 'failed') . " for order {$order->id}"
             );
 
-            return response()->json(['success' => $success, 'transaction_id' => $transactionId]);
+            return response()->json([
+                'success' => $result->success,
+                'transaction_id' => $result->transactionId,
+            ]);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'error' => $e->getMessage(),
                 'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ],500);
+                'line' => $e->getLine(),
+            ], 500);
         }
     }
 
@@ -84,10 +63,15 @@ class PaymentController extends Controller
     {
         try {
             $result = $payment->refund();
-            return response()->json(['success' => $result]);
+
+            return response()->json([
+                'success' => $result,
+            ]);
+
         } catch (\RuntimeException $e) {
-            // Esto se dispara cuando el payment es PaymentInCash
-            return response()->json(['error' => $e->getMessage()], 422);
+            return response()->json([
+                'error' => $e->getMessage(),
+            ], 422);
         }
     }
 }
