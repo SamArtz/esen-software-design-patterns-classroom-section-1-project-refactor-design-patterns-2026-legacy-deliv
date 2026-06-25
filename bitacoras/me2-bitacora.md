@@ -1,5 +1,5 @@
 @@ -1,46 +1,58 @@
-# Bitácora · Mini-entrega N — [Título del patrón]
+# Bitácora · Mini-entrega N — [Strategy y template]
 
 **Módulo refactorizado:** [ej. Descuentos / Notificaciones / Estados de Order]
 **Nombre:** Adrian Samuel Lopez Pimentel
